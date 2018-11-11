@@ -6,8 +6,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.datasource.lookup.AbstractRoutingDataSource;
 
-import javax.sql.DataSource;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -21,49 +21,38 @@ public class DynamicDatasource extends AbstractRoutingDataSource {
     private Map<Object, Object> dynamicTargetDataSources;
     private Object dynamicTargetDataSource;
 
-    public DynamicDatasource() {
-    }
-
-    public DynamicDatasource(DataSource dataSource) {
-        this.setDefaultTargetDataSource(dataSource);
-    }
-
 
     @Override
     protected Object determineCurrentLookupKey() {
-        log.info("determineCurrentLookupKey");
         Tenement tenement = TenementContextHolder.getTenement();
-        if (tenement == null) {
-            return null;
-        }
-        return tenement == null ? "0" : String.valueOf(tenement.getId());
+        return "db_" + tenement.getId();
     }
 
     /**
      * 添加数据源
      *
-     * @param key
-     * @param ip
-     * @param port
-     * @param db
-     * @param username
-     * @param password
+     * @param list
      * @return
      */
-    public boolean createDataSource(String key, String ip, int port, String db, String username, String password) {
+    public boolean addDataSources(List<Tenement> list) {
         try {
-            HikariDataSource dataSource = new HikariDataSource();
-            dataSource.setDriverClassName("com.mysql.cj.jdbc.Driver");
-            dataSource.setJdbcUrl("jdbc:mysql://" +
-                    ip + ":" + port + "/" + db +
-                    "?zeroDateTimeBehavior=convertToNull" +
-                    "&useUnicode=TRUE" +
-                    "&characterEncoding=utf8" +
-                    "&autoReconnect=true");
-            dataSource.setUsername(username);
-            dataSource.setPassword(password);
             Map<Object, Object> existDynamicTargetDataSources = this.dynamicTargetDataSources;
-            existDynamicTargetDataSources.put(key, dataSource);
+            for (Tenement tenement : list) {
+                if (existDynamicTargetDataSources.containsKey("db_" + tenement.getId())) {
+                    continue;
+                }
+                HikariDataSource dataSource = new HikariDataSource();
+                dataSource.setDriverClassName("com.mysql.jdbc.Driver");
+                dataSource.setJdbcUrl("jdbc:mysql://" +
+                        tenement.getIp() + ":" + tenement.getPort() + "/" + tenement.getDb() +
+                        "?zeroDateTimeBehavior=convertToNull" +
+                        "&useUnicode=TRUE" +
+                        "&characterEncoding=utf8" +
+                        "&autoReconnect=true");
+                dataSource.setUsername(tenement.getUsername());
+                dataSource.setPassword(tenement.getPassword());
+                existDynamicTargetDataSources.put("db_" + tenement.getId(), dataSource);
+            }
             setTargetDataSources(existDynamicTargetDataSources);
             super.afterPropertiesSet();
             return true;
@@ -76,12 +65,13 @@ public class DynamicDatasource extends AbstractRoutingDataSource {
     /**
      * 移除数据源
      *
-     * @param key
+     * @param tenementId
      * @return
      */
-    public boolean deleteDataSource(String key) {
+    public boolean deleteDataSource(long tenementId) {
         try {
             Map<Object, Object> existDynamicTargetDataSources = this.dynamicTargetDataSources;
+            String key = "db_" + tenementId;
             if (existDynamicTargetDataSources.containsKey(key)) {
                 Iterator<Object> iterator = existDynamicTargetDataSources.keySet().iterator();
                 while (iterator.hasNext()) {
@@ -103,7 +93,6 @@ public class DynamicDatasource extends AbstractRoutingDataSource {
         }
     }
 
-
     @Override
     public void setTargetDataSources(Map<Object, Object> targetDataSources) {
         super.setTargetDataSources(targetDataSources);
@@ -115,6 +104,7 @@ public class DynamicDatasource extends AbstractRoutingDataSource {
         super.setDefaultTargetDataSource(defaultTargetDataSource);
         this.dynamicTargetDataSource = defaultTargetDataSource;
     }
+
 
     public Map<Object, Object> getDynamicTargetDataSources() {
         return dynamicTargetDataSources;
